@@ -46,7 +46,7 @@ void Linklist_insert(LL* list, int x, int y, int speed)
 //单链表结点的删除
 void Node_delete(LL* list, Node* p)//p指向要删除的结点
 {
-	if (list == NULL || list->head)
+	if (list == NULL || list->head == NULL)
 	{
 		return;
 	}
