@@ -57,15 +57,19 @@ void DrawMap() {
 void play() {
 	// 使用GetAsyncKeyState检测按键状态（非阻塞方式）
 	if (GetAsyncKeyState('W') & 0x8000 || GetAsyncKeyState(VK_UP) & 0x8000) {
+		if(myplane.y >= 0)
 		myplane.y = myplane.y - myplane.speed;
 	}
 	if (GetAsyncKeyState('S') & 0x8000 || GetAsyncKeyState(VK_DOWN) & 0x8000) {
+		if(myplane.y <BGHEIGHT - myairHEIGHT)
 		myplane.y = myplane.y + myplane.speed;
 	}
 	if (GetAsyncKeyState('A') & 0x8000 || GetAsyncKeyState(VK_LEFT) & 0x8000) {
+		if(myplane.x >= 0)
 		myplane.x = myplane.x - myplane.speed;
 	}
 	if (GetAsyncKeyState('D') & 0x8000 || GetAsyncKeyState(VK_RIGHT) & 0x8000) {
+		if(myplane.x <BGWIDTH-myairWIDTH)
 		myplane.x = myplane.x + myplane.speed;
 	}
 }
