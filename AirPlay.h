@@ -84,9 +84,29 @@ void move() {
 		temp->y = temp->y + temp->speed;
 	}
 }
+//检测碰撞函数
+int Collision(Node* b,Node* e) {
+	int just = 1;
+	int bx = b->x + bulletWIDTH / 2;
+	int by = b->y + bulletHEIGHT / 2;
+	int ex = e->x + enemyWIDTH / 2;
+	int ey = e->y + enemyHEIGHT / 2;
+	if ((bx - ex) >= enemyWIDTH / 2 || (bx - ex) <= (enemyWIDTH / 2)*(-1)) {
+		just = 0;
+	}
+	if ((by - ey) >= enemyHEIGHT / 2 || (by - ey) <= (enemyHEIGHT / 2)*(-1)) {
+		just = 0;
+	}
+	return just;
+}
 //敌机生成函数
 void create_enemy() {
-	Linklist_insert(&enemy,rand()%(BGWIDTH - enemyWIDTH/2),  0, rand()%5+1);
+	static int val = 0;
+	if( val >= 100){
+		Linklist_insert(&enemy, rand() % (BGWIDTH - enemyWIDTH / 2), 0, rand() % 5 + 1);
+		val = 0;
+	}
+	val++;
 }
 
 //释放函数
@@ -96,6 +116,23 @@ void Delete() {
 		if (temp->y < 0) {
 			Node_delete(&myBullet, temp);
 			return;
+		}
+	}
+	//释放敌机
+	for (Node* temp = enemy.head; temp != NULL; temp = temp->next) {
+		if (temp->y > BGHEIGHT) {
+			Node_delete(&enemy, temp);
+			return;
+		}
+	}
+	//子弹打中敌机
+	for (Node* tempBullet = myBullet.head; tempBullet != NULL; tempBullet = tempBullet->next) {
+		for (Node* tempEnemy = enemy.head; tempEnemy != NULL; tempEnemy = tempEnemy->next) {
+			if (Collision(tempBullet, tempEnemy)) {
+				Node_delete(&myBullet, tempBullet);
+				Node_delete(&enemy, tempEnemy);
+				return;
+			}
 		}
 	}
 }
