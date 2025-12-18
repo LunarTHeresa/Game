@@ -24,6 +24,8 @@ IMAGE img[4];//图片数组
 Node myplane;//我方飞机
 LL myBullet;
 LL enemy;
+int isEnd;
+int count;
 
 
 //初始化函数
@@ -34,6 +36,7 @@ void init() {
 	loadimage(&img[2],  "res//enemy0.png", enemyWIDTH, enemyHEIGHT);
 	loadimage(&img[3], "res//zd11.png", bulletWIDTH, bulletHEIGHT);
 
+	
 	//我方飞机的初始化
 	myplane.x = BGWIDTH / 2 - myairWIDTH/2;
 	myplane.y = BGHEIGHT - myairHEIGHT - 10;
@@ -48,6 +51,8 @@ void init() {
 
 	//随机产生敌机
 	srand((unsigned int)time(NULL));
+	isEnd = 0;
+	count = 0;
 }
 
 //把图片贴在图形界面上：贴图函数
@@ -68,6 +73,12 @@ void DrawMap() {
 	for (Node* temp = myBullet.head; temp != NULL; temp = temp->next) {
 		putimage(temp->x, temp->y, &img[3]);
 	}
+	//显示得分
+	TCHAR scoreText[30];
+	wsprintf(scoreText, TEXT("当前得分为: %d"), count);
+	outtextxy(0, 0, scoreText);
+	setbkmode(TRANSPARENT);
+	settextcolor(BLACK); // 设置文字颜色为黑色
 	//结束批量绘图
 	EndBatchDraw();
 }
@@ -131,8 +142,16 @@ void Delete() {
 			if (Collision(tempBullet, tempEnemy)) {
 				Node_delete(&myBullet, tempBullet);
 				Node_delete(&enemy, tempEnemy);
+				count++;
 				return;
 			}
+		}
+	}
+	//敌机与我方飞机碰撞游戏结束
+	for (Node* tempEnemy = enemy.head; tempEnemy != NULL; tempEnemy = tempEnemy->next) {
+		if (Collision(&myplane, tempEnemy)) {
+			isEnd = 1;
+			return;
 		}
 	}
 }
@@ -182,6 +201,10 @@ void start() {
 		DrawMap();
 		create_enemy();
 		Delete();
+		if (isEnd) {
+			// 可以在这里显示“游戏结束”画面或跳出循环
+			break;
+		}
 		// 添加延迟，控制游戏速度
 		Sleep(10); // 延迟10毫秒
 	}
