@@ -22,7 +22,7 @@
 #define bulletHEIGHT 11
 
 
-//定义变量
+// 定义变量
 IMAGE img[4];//图片数组
 Node myplane;//我方飞机
 LL myBullet;
@@ -33,14 +33,24 @@ int count;
 
 //初始化函数
 void init() {
-	//加载图片
+	// 先确保任何已打开的别名被关闭，防止重复打开导致延迟或错误
+	mciSendString("stop bgmusic", NULL, 0, NULL);
+	mciSendString("close bgmusic", NULL, 0, NULL);
+
+	// 先启动音乐（提前于加载图片），减少进入游戏的延迟
+	// 使用别名并设置循环播放，避免播放延迟和保证循环
+	mciSendString("open \"res\\bg1.mp3\" type mpegvideo alias bgmusic", NULL, 0, NULL);
+	// 设置为毫秒格式，便于精确控制（可选）
+	mciSendString("set bgmusic time format ms", NULL, 0, NULL);
+	// 立即从头开始循环播放
+	mciSendString("play bgmusic from 0 repeat", NULL, 0, NULL);
+
+	//加载图片（可能耗时，将音乐启动放在前面以减少用户感知延迟)
 	loadimage(&img[0], "res//bg01.png", BGWIDTH, BGHEIGHT);
 	loadimage(&img[1], "res//hero.png", myairWIDTH, myairHEIGHT);
 	loadimage(&img[2],  "res//enemy0.png", enemyWIDTH, enemyHEIGHT);
 	loadimage(&img[3], "res//zd11.png", bulletWIDTH, bulletHEIGHT);
-	//加载音乐
-	mciSendString("open res//bg1.mp3", 0, 0, 0);
-	mciSendString("play res//bg1.mp3", 0, 0, 0);
+
 	//我方飞机的初始化
 	myplane.x = BGWIDTH / 2 - myairWIDTH/2;
 	myplane.y = BGHEIGHT - myairHEIGHT - 10;
@@ -231,7 +241,9 @@ void start() {
 			// 可以在这里显示“游戏结束”画面或跳出循环
 			LinkList_ALL(&myBullet);
 			LinkList_ALL(&enemy);
-			mciSendString("close res//bg1.mp3", 0, 0, 0);
+			// 停止并关闭别名音乐，确保下次可以立即重开播放
+			mciSendString("stop bgmusic", NULL, 0, NULL);
+			mciSendString("close bgmusic", NULL, 0, NULL);
 			//判断游戏结束，以及是否开始下一局
 			TCHAR endText[50];
 			wsprintf(endText, TEXT("游戏结束! 你的得分是: %d\n是否重新开始游戏"), count);
