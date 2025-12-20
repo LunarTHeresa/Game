@@ -4,6 +4,9 @@
 #include<windows.h>
 #include<stdlib.h>
 #include<time.h>
+#pragma comment(lib,"winmm.lib")
+#include"tools.hpp"
+#include<new.h>
 
 #define BGWIDTH 400
 #define BGHEIGHT 600
@@ -35,8 +38,9 @@ void init() {
 	loadimage(&img[1], "res//hero.png", myairWIDTH, myairHEIGHT);
 	loadimage(&img[2],  "res//enemy0.png", enemyWIDTH, enemyHEIGHT);
 	loadimage(&img[3], "res//zd11.png", bulletWIDTH, bulletHEIGHT);
-
-	
+	//加载音乐
+	mciSendString("open res//bg1.mp3", 0, 0, 0);
+	mciSendString("play res//bg1.mp3", 0, 0, 0);
 	//我方飞机的初始化
 	myplane.x = BGWIDTH / 2 - myairWIDTH/2;
 	myplane.y = BGHEIGHT - myairHEIGHT - 10;
@@ -62,16 +66,19 @@ void DrawMap() {
 	//贴背景
 	putimage(0, 0, &img[0]);
 	//贴我方飞机putimage(200, 300, &img[1]);
-	putimage(myplane.x, myplane.y, &img[1]);
+	//putimage(myplane.x, myplane.y, &img[1]);
+	drawImg(myplane.x, myplane.y,&img[1]);
 	//贴敌机
 	//putimage(100, 100, &img[2]);
 	for (Node* temp = enemy.head; temp != NULL; temp = temp->next) {
-		putimage(temp->x, temp->y, &img[2]);
+		//putimage(temp->x, temp->y, &img[2]);
+		drawImg(temp->x, temp->y,&img[2]);
 	}
 	//贴子弹
 	//putimage(200, 200, &img[3]);
 	for (Node* temp = myBullet.head; temp != NULL; temp = temp->next) {
-		putimage(temp->x, temp->y, &img[3]);
+		//putimage(temp->x, temp->y, &img[3]);
+		drawImg(temp->x, temp->y, &img[3]);
 	}
 	//显示得分
 	TCHAR scoreText[30];
@@ -120,36 +127,55 @@ void create_enemy() {
 	val++;
 }
 
-//释放函数
+// 通用矩形碰撞检测（以左上角坐标和宽高判断）
+int CollisionRect(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) {
+	int a_cx = ax + aw / 2;
+	int a_cy = ay + ah / 2;
+	int b_cx = bx + bw / 2;
+	int b_cy = by + bh / 2;
+	if (abs(a_cx - b_cx) > (aw + bw) / 2) return 0;
+	if (abs(a_cy - b_cy) > (ah + bh) / 2) return 0;
+	return 1;
+}
+
+// 释放函数（安全遍历并使用通用碰撞）
 void Delete() {
-	//释放越界子弹
-	for (Node* temp = myBullet.head; temp != NULL; temp = temp->next) {
+	// 释放越界子弹（安全遍历）
+	for (Node* temp = myBullet.head; temp != NULL; ) {
+		Node* next = temp->next;
 		if (temp->y < 0) {
 			Node_delete(&myBullet, temp);
-			return;
 		}
+		temp = next;
 	}
-	//释放敌机
-	for (Node* temp = enemy.head; temp != NULL; temp = temp->next) {
+	// 释放越界敌机（安全遍历）
+	for (Node* temp = enemy.head; temp != NULL; ) {
+		Node* next = temp->next;
 		if (temp->y > BGHEIGHT) {
 			Node_delete(&enemy, temp);
-			return;
 		}
+		temp = next;
 	}
-	//子弹打中敌机
-	for (Node* tempBullet = myBullet.head; tempBullet != NULL; tempBullet = tempBullet->next) {
-		for (Node* tempEnemy = enemy.head; tempEnemy != NULL; tempEnemy = tempEnemy->next) {
-			if (Collision(tempBullet, tempEnemy)) {
-				Node_delete(&myBullet, tempBullet);
-				Node_delete(&enemy, tempEnemy);
+	// 子弹打中敌机（双重遍历，删除时使用保存的next）
+	for (Node* b = myBullet.head; b != NULL; ) {
+		Node* bnext = b->next;
+		for (Node* e = enemy.head; e != NULL; ) {
+			Node* enext = e->next;
+			if (CollisionRect(b->x, b->y, bulletWIDTH, bulletHEIGHT, e->x, e->y, enemyWIDTH, enemyHEIGHT)) {
+				Node_delete(&myBullet, b);
+				Node_delete(&enemy, e);
 				count++;
-				return;
+				// 已删除 b 和 e，跳出内层循环
+				break;
 			}
+			e = enext;
 		}
+		// 如果 b 已被删除，它不再有效；直接继续到保存的 bnext
+		b = bnext;
 	}
-	//敌机与我方飞机碰撞游戏结束
-	for (Node* tempEnemy = enemy.head; tempEnemy != NULL; tempEnemy = tempEnemy->next) {
-		if (Collision(&myplane, tempEnemy)) {
+	// 敌机与我方飞机碰撞游戏结束（使用玩家宽高）
+	for (Node* e = enemy.head; e != NULL; e = e->next) {
+		if (CollisionRect(myplane.x, myplane.y, myairWIDTH, myairHEIGHT, e->x, e->y, enemyWIDTH, enemyHEIGHT)) {
 			isEnd = 1;
 			return;
 		}
@@ -203,7 +229,22 @@ void start() {
 		Delete();
 		if (isEnd) {
 			// 可以在这里显示“游戏结束”画面或跳出循环
-			break;
+			LinkList_ALL(&myBullet);
+			LinkList_ALL(&enemy);
+			mciSendString("close res//bg1.mp3", 0, 0, 0);
+			//判断游戏结束，以及是否开始下一局
+			TCHAR endText[50];
+			wsprintf(endText, TEXT("游戏结束! 你的得分是: %d\n是否重新开始游戏"), count);
+			int restart = MessageBox(GetForegroundWindow(),endText,"游戏结束", MB_YESNO);
+			if (restart == IDYES) {
+				//重新开始游戏
+				init();
+				continue;
+			}
+			else {
+				//退出游戏
+				break;
+			}
 		}
 		// 添加延迟，控制游戏速度
 		Sleep(10); // 延迟10毫秒

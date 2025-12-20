@@ -132,6 +132,8 @@
   <ItemGroup>
     <ClInclude Include="AirPlay.h" />
     <ClInclude Include="list.h" />
+    <ClInclude Include="new.h" />
+    <ClInclude Include="tools.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
