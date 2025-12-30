@@ -92,8 +92,3 @@ void drawImg(int x, int y, int dstW, int dstH, IMAGE* src, int srcX, int srcY)
 		psrc += src_w;
 	}
 }
-/*
- *@Easyx B站学习地址：https://www.bilibili.com/video/BV11p4y1i74A?from=search&seid=15227723645663445849
- *@微信公众号：C语言Plus		
- *@png透明贴图
-*/

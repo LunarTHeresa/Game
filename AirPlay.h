@@ -8,6 +8,13 @@
 #include"tools.hpp"
 #include<new.h>
 #include<unordered_map>
+#include <string>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <sstream>
+#include <iostream>
+#include <cstdio>
 
 #define BGWIDTH 400
 #define BGHEIGHT 600
@@ -57,12 +64,181 @@ typedef struct Boss {
 Boss* bossPtr = NULL;
 int nextBossScore = 50; // 下一次出现 boss 的分数阈值
 
+// 玩家昵称（全局）
+static std::string playerName = "Player";
+// 排行文件名
+static const char* RANK_FILE = "rank.txt";
+
 // 辅助：安全删除敌机并清理映射
 void EnemyNode_erase(Node* n) {
 	if (n == NULL) return;
 	if (enemyHP.find(n) != enemyHP.end()) enemyHP.erase(n);
 	if (enemyMaxHP.find(n) != enemyMaxHP.end()) enemyMaxHP.erase(n);
 	Node_delete(&enemy, n);
+}
+
+// 获取玩家昵称：在控制台中输入，然后关闭控制台
+// 伪代码（详细计划）：
+// 1. 尝试分配新控制台 (AllocConsole)
+//    - 如果成功，标记为已分配
+//    - 如果失败，尝试附加到父进程控制台 (AttachConsole(ATTACH_PARENT_PROCESS))
+// 2. 重定向 stdout/stderr/stdin 到控制台（使用 freopen_s 打开 "CONOUT$"/"CONIN$"）
+// 3. 提示玩家输入昵称并使用 fgets 读取（缓冲区长度 64）
+// 4. 修剪读取字符串前后空白并去除末尾换行符
+// 5. 如果输入为空，则保持默认名 "Player"
+// 6. 关闭已打开的 FILE* 并释放控制台（不论是分配还是附加，都调用 FreeConsole）
+// 7. 确保昵称长度不超过 60
+void GetPlayerName() {
+	// 尝试分配控制台；若失败则尝试附加到父进程控制台
+	BOOL allocated = FALSE;
+	if (AllocConsole()) {
+		allocated = TRUE;
+	} else {
+		// 若已经有控制台则附加父进程的控制台（例如从 IDE 或 cmd 启动时）
+		AttachConsole(ATTACH_PARENT_PROCESS);
+	}
+
+	FILE* in = NULL;
+	FILE* out = NULL;
+	// 重定向标准输出/输入到控制台（忽略返回值，但尽量保证能读写）
+	freopen_s(&out, "CONOUT$", "w", stdout);
+	freopen_s(&in, "CONIN$", "r", stdin);
+
+	// 若无法打开控制台 I/O，则尝试清理并直接返回（保持默认名字）
+	if (in == NULL || out == NULL) {
+		if (out) { fclose(out); out = NULL; }
+		if (in) { fclose(in); in = NULL; }
+		// 只有在我们确实分配过控制台时才释放（对附加的控制台调用 FreeConsole 也可接受）
+		if (allocated) FreeConsole();
+		return;
+	}
+
+	// 提示并读取
+	printf("请输入昵称(最多60个字符，回车确认): ");
+	char buf[64] = {0};
+	if (fgets(buf, sizeof(buf), stdin) != NULL) {
+		// 去掉末尾换行
+		size_t len = strlen(buf);
+		if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
+		// 转为 std::string 并修剪前后空白
+		std::string tmp = buf;
+		size_t start = tmp.find_first_not_of(" \t\r\n");
+		size_t end = tmp.find_last_not_of(" \t\r\n");
+		if (start != std::string::npos && end != std::string::npos && end >= start) {
+			playerName = tmp.substr(start, end - start + 1);
+		} else {
+			// 若只输入空白或空字符串，则保留默认名或使用非空输入
+			if (!tmp.empty()) playerName = tmp;
+		}
+	}
+
+	// 关闭重定向并释放控制台
+	if (out) { fclose(out); out = NULL; }
+	if (in) { fclose(in); in = NULL; }
+	FreeConsole();
+
+	// 最后确保名字合理
+	if (playerName.empty()) playerName = "Player";
+	if (playerName.size() > 60) playerName = playerName.substr(0, 60);
+}
+
+// 保存分数并显示排行榜
+// 伪代码（详细计划）：
+// 1. 读取现有排行文件，把相同昵称的记录合并为唯一记录并保留最高分（用 unordered_map<string,int> bestScores）
+// 2. 将本次得分与已有得分比较，保留更高的分数
+// 3. 把合并后的记录转换为 vector<pair<int,string>>，按分数降序排序
+// 4. 覆写排行文件（按排序后的顺序写入），确保文件中每个昵称只有一条记录，且为最高分
+// 5. 构造并显示前10名排行文本，同时显示玩家这次（即最终保留的）名次
+void SaveScoreAndShowRank(int score) {
+	// 读取并合并已有记录，保留每个昵称的最高分
+	std::unordered_map<std::string, int> bestScores;
+	try {
+		std::ifstream ifs(RANK_FILE, std::ios::in | std::ios::binary);
+		std::string line;
+		while (std::getline(ifs, line)) {
+			if (line.empty()) continue;
+			size_t pos = line.rfind('|');
+			if (pos == std::string::npos) continue;
+			std::string name = line.substr(0, pos);
+			std::string scs = line.substr(pos + 1);
+			// 去掉 name 两端空白
+			auto trim = [](std::string &s) {
+				const char* ws = " \t\r\n";
+				size_t a = s.find_first_not_of(ws);
+				size_t b = s.find_last_not_of(ws);
+				if (a == std::string::npos) { s.clear(); return; }
+				s = s.substr(a, b - a + 1);
+			};
+			trim(name);
+			trim(scs);
+			if (name.empty() || scs.empty()) continue;
+			try {
+				int sc = std::stoi(scs);
+				auto it = bestScores.find(name);
+				if (it == bestScores.end() || sc > it->second) {
+					bestScores[name] = sc;
+				}
+			} catch (...) {
+				continue;
+			}
+		}
+		ifs.close();
+	} catch (...) {
+		// 读取失败则继续，bestScores 可能为空
+	}
+
+	// 更新当前玩家的最高分（保留更高者）
+	auto itp = bestScores.find(playerName);
+	if (itp == bestScores.end() || score > itp->second) {
+		bestScores[playerName] = score;
+	}
+
+	// 将合并结果排序（按分数降序）
+	std::vector<std::pair<int, std::string>> entries;
+	entries.reserve(bestScores.size());
+	for (const auto& kv : bestScores) {
+		entries.emplace_back(kv.second, kv.first); // pair<score, name>
+	}
+	std::sort(entries.begin(), entries.end(), [](const std::pair<int, std::string>& a, const std::pair<int, std::string>& b) {
+		if (a.first != b.first) return a.first > b.first;
+		return a.second < b.second;
+	});
+
+	// 覆写写回文件（保证文件中每个昵称只有一条且为最高分）
+	try {
+		std::ofstream ofs(RANK_FILE, std::ios::out | std::ios::trunc | std::ios::binary);
+		if (ofs) {
+			for (const auto& e : entries) {
+				ofs << e.second << "|" << e.first << "\n";
+			}
+			ofs.close();
+		}
+	} catch (...) {
+		// 写失败则忽略
+	}
+
+	// 构造排行榜文本（最多前10）
+	std::ostringstream oss;
+	oss << "排行榜(前10):\n";
+	int limit = (int)entries.size() < 10 ? (int)entries.size() : 10;
+	for (int i = 0; i < limit; ++i) {
+		oss << (i + 1) << ". " << entries[i].second << " - " << entries[i].first << "\n";
+	}
+	// 查找玩家最终保留得分和名次
+	int playerRank = -1;
+	int playerBestScore = -1;
+	for (size_t i = 0; i < entries.size(); ++i) {
+		if (entries[i].second == playerName) {
+			playerRank = (int)i + 1;
+			playerBestScore = entries[i].first;
+			break;
+		}
+	}
+	if (playerRank != -1) {
+		oss << "\n你的本次名次: " << playerRank << "（记录分: " << playerBestScore << "）\n";
+	}
+	std::string msg = oss.str();
+	MessageBoxA(GetForegroundWindow(), msg.c_str(), "排行榜", MB_OK | MB_TOPMOST);
 }
 
 // 初始化函数
@@ -399,7 +575,7 @@ void Delete() {
 	// 敌机与我方飞机碰撞游戏结束（使用玩家宽高）
 	for (Node* e = enemy.head; e != NULL; e = e->next) {
 		if (CollisionRect(myplane.x, myplane.y, myairWIDTH, myairHEIGHT, e->x, e->y, enemyWIDTH, enemyHEIGHT)) {
-			// 普通敌机与玩家碰撞仍旧直接结束游戏
+			// 普通敌机与玩家碰撞仍舊直接结束游戏
 			isEnd = 1;
 			return;
 		}
@@ -417,7 +593,7 @@ void Delete() {
 					return;
 				}
 			} else {
-				// 非 boss 战时仍旧直接死亡
+				// 非 boss 战时仍舊直接死亡
 				isEnd = 1;
 				return;
 			}
@@ -470,6 +646,18 @@ void play() {
 
 //打开窗口
 void start() {
+	// 在正式进入图形界面前，要求玩家输入并确认昵称
+	while (true) {
+		GetPlayerName(); // 在控制台输入昵称（会分配并释放控制台）
+		// 构造确认提示，使用 ANSI MessageBox 显示玩家输入的昵称
+		std::string msg = "你的昵称是: ";
+		msg += playerName;
+		msg += "\n\n确认并开始游戏吗？\n(选择 否 将重新输入昵称)";
+		int res = MessageBoxA(GetForegroundWindow(), msg.c_str(), "确认昵称", MB_YESNO | MB_ICONQUESTION | MB_TOPMOST);
+		if (res == IDYES) break; // 确认则继续进入游戏
+		// 否则循环再次输入
+	}
+
 	initgraph(BGWIDTH, BGHEIGHT);
 	init();//初始化
 	DrawMap();//加载图片
@@ -482,6 +670,9 @@ void start() {
 		create_boss_if_needed();
 		Delete();
 		if (isEnd) {
+			// 保存分数并显示排行榜（在询问是否重开前）
+			SaveScoreAndShowRank(count);
+
 			// 可以在这里显示“游戏结束”画面或跳出循环
 			LinkList_ALL(&myBullet);
 			LinkList_ALL(&enemy);
@@ -494,7 +685,7 @@ void start() {
 			mciSendString("stop bgmusic", NULL, 0, NULL);
 			mciSendString("close bgmusic", NULL, 0, NULL);
 			//判断游戏结束，以及是否开始下一局
-			TCHAR endText[50];
+			TCHAR endText[80];
 			wsprintf(endText, TEXT("游戏结束! 你的得分是: %d\n是否重新开始游戏"), count);
 			int restart = MessageBox(GetForegroundWindow(),endText,"游戏结束", MB_YESNO);
 			if (restart == IDYES) {
